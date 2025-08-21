@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
 const OpenAI = require("openai");
 require('dotenv').config();
 
@@ -11,6 +12,7 @@ app.use(bodyParser.json());
 app.use(cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3001'
 }));
+app.use(express.json());
 
 let clientconfig = {};
 
@@ -29,6 +31,14 @@ if (process.env.PROVIDER === 'ollama') {
 }
 
 const openai = new OpenAI(clientconfig);
+
+const DocumentSchema = new mongoose.Schema({
+    text: { type: String, required: true },
+    source: { type: String, enum: ['file', 'paste'], required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const Document = mongoose.model('Document', DocumentSchema);
 
 async function callLLM(message) {
   const response = await openai.chat.completions.create({
@@ -54,6 +64,29 @@ app.post('/ask', async (req, res) => {
         res.status(500).send("Error calling LLM");
     }
 });
+
+app.post('/ingest', async (req, res) => {
+    try {
+        const { text, source } = req.body;
+
+        if (!text) {
+            return res.status(400).json({ error: 'Text is required' });
+        }
+
+        const document = new Document({ text, source });
+        await document.save();
+
+        res.json({ 
+            message: 'Document ingested successfully', 
+            id: document._id
+        });
+    } catch (error) {
+        console.error("Error ingesting document:", error);
+        res.status(500).json({ error: 'Failed to ingest document' });
+    }
+});
+
+mongoose.connect(process.env.MONGODB_URI);
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
