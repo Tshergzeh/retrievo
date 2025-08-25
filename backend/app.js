@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const OpenAI = require("openai");
+const tiktoken = require('tiktoken');
 require('dotenv').config();
 
 const app = express();
@@ -49,6 +50,38 @@ async function callLLM(message) {
   return(response.choices[0].message.content);
 };
 
+function chunkText(text, chunkSize=800, overlap=100) {
+    const encoder = tiktoken.get_encoding("cl100k_base");
+    const tokens = encoder.encode(text);
+    const chunks = [];
+    let start = 0;
+
+    while (start < tokens.length) {
+        let end = start + chunkSize;
+        const chunkTokens = tokens.slice(start, end);
+        const chunkText = new TextDecoder('utf-8').decode(encoder.decode(chunkTokens));
+        chunks.push(chunkText);
+        start += chunkSize - overlap;
+    }
+
+    return chunks;
+};
+
+async function getEmbedding(text) {
+  const response = await fetch("http://localhost:11434/api/embeddings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "nomic-embed-text",
+      prompt: String(text),
+    }),
+  });
+
+  const data = await response.json();
+  console.log('Embedding API response:', data);
+  return data.embedding; 
+}
+
 app.post('/ask', async (req, res) => {
     const userMessage = req.body.message;
 
@@ -75,10 +108,26 @@ app.post('/ingest', async (req, res) => {
 
         const document = new Document({ text, source });
         await document.save();
+        
+        const chunks = chunkText(text);
+        const embeddings = [];
+        for (const [index, chunk] of chunks.entries()) {
+            
+            embeddings.push({
+                chunk: chunk,
+                embedding: await getEmbedding(chunk)
+            });
+        }
+
+        console.log(embeddings);
 
         res.json({ 
+            success: true,
             message: 'Document ingested successfully', 
-            id: document._id
+            data: {
+                id: document._id,
+                numberOfEmbeddings: embeddings.length
+            }
         });
     } catch (error) {
         console.error("Error ingesting document:", error);
