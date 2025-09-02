@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const OpenAI = require("openai");
 const tiktoken = require('tiktoken');
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
@@ -78,8 +79,29 @@ async function getEmbedding(text) {
   });
 
   const data = await response.json();
-  console.log('Embedding API response:', data);
   return data.embedding; 
+}
+
+async function addToFaiss(id, embedding) {
+    try {
+        const response = await axios.post('http://localhost:8000/add', {
+            mongo_id: id,
+            embedding: embedding
+        });
+
+        return response.data;
+    } catch (error) {
+        console.error("Error adding to Faiss:", error.response?.data || error.message);
+        throw error;
+    }
+}
+
+async function searchFaiss(queryEmbedding, topK=5) {
+    const response = await axios.post('http://localhost:8000/search', {
+        query_embedding: queryEmbedding,
+        top_k: topK
+    });
+    return response.data.results;
 }
 
 app.post('/ask', async (req, res) => {
@@ -111,15 +133,16 @@ app.post('/ingest', async (req, res) => {
         
         const chunks = chunkText(text);
         const embeddings = [];
+
         for (const [index, chunk] of chunks.entries()) {
-            
+            const embedding = await getEmbedding(chunk);
             embeddings.push({
                 chunk: chunk,
-                embedding: await getEmbedding(chunk)
+                embedding: embedding
             });
-        }
 
-        console.log(embeddings);
+            await addToFaiss(document._id.toString(), embedding);
+        }
 
         res.json({ 
             success: true,
@@ -132,6 +155,27 @@ app.post('/ingest', async (req, res) => {
     } catch (error) {
         console.error("Error ingesting document:", error);
         res.status(500).json({ error: 'Failed to ingest document' });
+    }
+});
+
+app.post('/search', async (req, res) => {
+    try {
+        const { query } = req.body;
+
+        if (!query) {
+            return res.status(400).json({ error: 'Query is required' });
+        }
+
+        const queryEmbedding = await getEmbedding(query);
+        const results = await searchFaiss(queryEmbedding);
+
+        res.json({ 
+            success: true,
+            results: results 
+        });
+    } catch (error) {
+        console.error("Error searching documents:", error);
+        res.status(500).json({ error: 'Failed to search documents' });
     }
 });
 
