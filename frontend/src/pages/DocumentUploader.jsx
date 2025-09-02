@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import pdfToText from 'react-pdftotext';
 
 function DocumentUploader() {
     const [text, setText] = useState('');
@@ -9,15 +10,22 @@ function DocumentUploader() {
     const handleFileChange = (e) => {
         const uploadedFile = e.target.files[0];
 
-        if (uploadedFile && uploadedFile.type === 'text/plain') {
+        if (!uploadedFile) return;
+
+        if (uploadedFile.type === 'text/plain') {
             const reader = new FileReader();
             reader.onload = (event) => {
                 setText(event.target.result);
             };
             reader.readAsText(uploadedFile);
             setFile(uploadedFile);
+        } else if (uploadedFile.type.includes('application/pdf')) {
+            pdfToText(uploadedFile)
+                .then(extractedText => { setText(extractedText) })
+                .catch(err => console.error("Error extracting PDF text", err));
+            setFile(uploadedFile);
         } else {
-            alert('Please upload a valid .txt file');
+            alert('Please upload a valid file');
         }
     };
 
@@ -57,7 +65,11 @@ function DocumentUploader() {
                 style={{ width: '100%', marginBottom: '1rem' }}
             />
 
-            <input type='file' accept='.txt' onChange={handleFileChange} />
+            <input 
+                type='file' 
+                accept='.txt, .pdf, .doc, .docx' 
+                onChange={handleFileChange} 
+            />
             <br />
 
             <button onClick={handleSubmit} disabled={loading}>
