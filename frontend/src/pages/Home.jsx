@@ -36,7 +36,7 @@ function Home() {
                 `${process.env.REACT_APP_API_URL}/ask`, 
                 { message }
             );
-            setReply(response.data.reply);
+            setReply(response.data.answer);
         } catch (error) {
             console.error('Error sending message:', error);
             console.log(`${process.env.REACT_APP_API_URL}`);

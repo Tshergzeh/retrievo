@@ -112,11 +112,21 @@ app.post('/ask', async (req, res) => {
     };
 
     try {
-        const reply = await callLLM(userMessage);
-        res.json({ reply });
+        const queryEmbedding = await getEmbedding(userMessage);
+        const searchResults = await searchFaiss(queryEmbedding, 5);
+        const contextChunks = searchResults.map(result => result.text).join("\n---\n");
+        const ragPrompt = `Use the following context to answer the question as accurately as possible. If the answer is not present in the context, say "I don't know".\n\nContext:\n${contextChunks}\nQuestion: ${userMessage}\nAnswer:`;
+        const reply = await callLLM(ragPrompt);
+        console.log("LLM Reply:", reply);
+
+        res.json({ 
+            success: true,
+            answer: reply,
+            context: searchResults 
+        });
     } catch (error) {
-        console.error("Error calling LLM:", error);
-        res.status(500).send("Error calling LLM");
+        console.error("Error in flow:", error);
+        res.status(500).send("Failed to process the request");
     }
 });
 
