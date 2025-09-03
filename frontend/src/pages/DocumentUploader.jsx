@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import pdfToText from 'react-pdftotext';
+import mammoth from 'mammoth'
 
 function DocumentUploader() {
     const [text, setText] = useState('');
@@ -23,6 +24,22 @@ function DocumentUploader() {
             pdfToText(uploadedFile)
                 .then(extractedText => { setText(extractedText) })
                 .catch(err => console.error("Error extracting PDF text", err));
+            setFile(uploadedFile);
+        } else if (uploadedFile.type.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const arrayBuffer = event.target.result;
+                    const { value } = await mammoth.extractRawText(
+                        { arrayBuffer }
+                    );
+                    setText(value);
+                } catch (error) {
+                    alert('Error reading .docx file');
+                    console.error('Error reading .docx file:', error);
+                }
+            }
+            reader.readAsArrayBuffer(uploadedFile);
             setFile(uploadedFile);
         } else {
             alert('Please upload a valid file');
@@ -67,7 +84,7 @@ function DocumentUploader() {
 
             <input 
                 type='file' 
-                accept='.txt, .pdf, .doc, .docx' 
+                accept=".txt, .pdf, application/pdf, .doc, .docx, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
                 onChange={handleFileChange} 
             />
             <br />
